@@ -10,6 +10,7 @@ use proto_gen::node_manager::{
     node_manager_service_client::NodeManagerServiceClient, HealthStatus, HeartbeatRequest,
     StatusRequest,
 };
+use serde_json::{json, Value};
 use tonic::transport::Channel;
 use tracing::{error, info};
 use uuid::Uuid;
@@ -80,6 +81,82 @@ fn parse_health_status(s: &str) -> Result<HealthStatus, String> {
     }
 }
 
+/// Convert a proto RoleType i32 to a human-readable string.
+fn role_type_name(role: i32) -> String {
+    match role {
+        1 => "METADATA".to_string(),
+        2 => "DATA".to_string(),
+        3 => "STORAGE".to_string(),
+        _ => format!("UNKNOWN({})", role),
+    }
+}
+
+/// Convert a proto NodeStatus i32 to a human-readable string.
+fn node_status_name(status: i32) -> String {
+    match status {
+        1 => "ASSIGNABLE".to_string(),
+        2 => "SUSPECT".to_string(),
+        3 => "UNASSIGNABLE".to_string(),
+        _ => format!("UNKNOWN({})", status),
+    }
+}
+
+/// Convert a RoleLease proto message to a human-readable JSON value.
+/// Omits fencing_token when it is 0 (meaning no split-brain protection needed).
+fn format_role_lease(role: &proto_gen::node_manager::RoleLease) -> Value {
+    let mut map = serde_json::Map::new();
+    map.insert("role".to_string(), json!(role_type_name(role.role)));
+
+    if role.fencing_token != 0 {
+        map.insert("fencing_token".to_string(), json!(role.fencing_token));
+    }
+
+    // Convert unix millis to human-readable ISO 8601
+    let expires_at = chrono::DateTime::from_timestamp_millis(role.lease_expires_at as i64)
+        .map(|dt| dt.to_rfc3339())
+        .unwrap_or_else(|| role.lease_expires_at.to_string());
+    map.insert("lease_expires_at".to_string(), json!(expires_at));
+
+    Value::Object(map)
+}
+
+/// Format a HeartbeatResponse as human-readable JSON.
+fn format_heartbeat_response(
+    response: &proto_gen::node_manager::HeartbeatResponse,
+) -> Value {
+    json!({
+        "node_status": node_status_name(response.node_status),
+        "assigned_roles": response.assigned_roles.iter().map(format_role_lease).collect::<Vec<_>>(),
+        "cluster_nodes": response.cluster_nodes.iter().map(|peer| {
+            json!({
+                "node_id": peer.node_id,
+                "status": node_status_name(peer.status),
+                "roles": peer.roles.iter().map(format_role_lease).collect::<Vec<_>>()
+            })
+        }).collect::<Vec<_>>()
+    })
+}
+
+/// Format a StatusResponse as human-readable JSON.
+fn format_status_response(
+    response: &proto_gen::node_manager::StatusResponse,
+) -> Value {
+    json!({
+        "clusters": response.clusters.iter().map(|cluster| {
+            json!({
+                "cluster_id": cluster.cluster_id,
+                "nodes": cluster.nodes.iter().map(|peer| {
+                    json!({
+                        "node_id": peer.node_id,
+                        "status": node_status_name(peer.status),
+                        "roles": peer.roles.iter().map(format_role_lease).collect::<Vec<_>>()
+                    })
+                }).collect::<Vec<_>>()
+            })
+        }).collect::<Vec<_>>()
+    })
+}
+
 /// Connect to the Node Manager service
 async fn connect(server_addr: &str) -> Result<NodeManagerServiceClient<Channel>, String> {
     NodeManagerServiceClient::connect(server_addr.to_string())
@@ -117,7 +194,7 @@ async fn handle_heartbeat(
         .into_inner();
 
     // Print response as formatted JSON
-    let json_output = serde_json::to_string_pretty(&response)
+    let json_output = serde_json::to_string_pretty(&format_heartbeat_response(&response))
         .map_err(|e| format!("Failed to serialize response to JSON: {}", e))?;
     println!("{}", json_output);
 
@@ -139,7 +216,7 @@ async fn handle_status(server_addr: &str, cluster_id: Option<String>) -> Result<
         .into_inner();
 
     // Print response as formatted JSON
-    let json_output = serde_json::to_string_pretty(&response)
+    let json_output = serde_json::to_string_pretty(&format_status_response(&response))
         .map_err(|e| format!("Failed to serialize response to JSON: {}", e))?;
     println!("{}", json_output);
 

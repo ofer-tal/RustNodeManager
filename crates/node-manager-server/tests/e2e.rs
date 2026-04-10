@@ -139,8 +139,8 @@ async fn test_cli_heartbeat_creates_node() {
         "--health", "healthy",
     ]).await;
 
-    assert!(output.contains("Assignable") || output.contains("\"node_status\": 1"),
-        "Expected Assignable status in output, got: {}", output);
+    assert!(output.contains("ASSIGNABLE"),
+        "Expected ASSIGNABLE status in output, got: {}", output);
 }
 
 #[tokio::test]
@@ -213,6 +213,6 @@ async fn test_cli_unhealthy_heartbeat() {
         "--health", "unhealthy",
     ]).await;
 
-    assert!(output.contains("Unassignable") || output.contains("\"node_status\": 3"),
-        "Expected Unassignable status, got: {}", output);
+    assert!(output.contains("UNASSIGNABLE"),
+        "Expected UNASSIGNABLE status, got: {}", output);
 }

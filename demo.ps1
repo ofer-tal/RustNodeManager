@@ -77,17 +77,7 @@ function Send-Heartbeat([string]$NodeId, [string]$ClusterId, [string]$Health = "
         return
     }
     $output | ForEach-Object {
-        $line = $_
-        $line = $line -replace '"node_status": 1', '"node_status": "ASSIGNABLE"'
-        $line = $line -replace '"node_status": 2', '"node_status": "SUSPECT"'
-        $line = $line -replace '"node_status": 3', '"node_status": "UNASSIGNABLE"'
-        $line = $line -replace '"role": 1', '"role": "METADATA"'
-        $line = $line -replace '"role": 2', '"role": "DATA"'
-        $line = $line -replace '"role": 3', '"role": "STORAGE"'
-        $line = $line -replace '"status": 1', '"status": "ASSIGNABLE"'
-        $line = $line -replace '"status": 2', '"status": "SUSPECT"'
-        $line = $line -replace '"status": 3', '"status": "UNASSIGNABLE"'
-        Write-Host "  $line" -ForegroundColor White
+        Write-Host "  $_" -ForegroundColor White
     }
 }
 
@@ -98,14 +88,7 @@ function Get-Status([string]$ClusterId = "", [string]$Label = "") {
     if ($ClusterId) { $cliArgs += @("--cluster-id", $ClusterId) }
     $output = Run-Cli @cliArgs
     $output | ForEach-Object {
-        $line = $_
-        $line = $line -replace '"status": 1', '"status": "ASSIGNABLE"'
-        $line = $line -replace '"status": 2', '"status": "SUSPECT"'
-        $line = $line -replace '"status": 3', '"status": "UNASSIGNABLE"'
-        $line = $line -replace '"role": 1', '"role": "METADATA"'
-        $line = $line -replace '"role": 2', '"role": "DATA"'
-        $line = $line -replace '"role": 3', '"role": "STORAGE"'
-        Write-Host "  $line" -ForegroundColor White
+        Write-Host "  $_" -ForegroundColor White
     }
 }
 
