@@ -30,7 +30,7 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Send a single heartbeat to the Node Manager
+    /// Send heartbeats to the Node Manager
     Heartbeat {
         /// Node ID (UUID, auto-generated if not provided)
         #[arg(short, long)]
@@ -43,6 +43,10 @@ enum Commands {
         /// Health status (default: healthy)
         #[arg(long, default_value = "healthy", value_parser = parse_health_status)]
         health: HealthStatus,
+
+        /// Send heartbeats every N seconds until Ctrl+C (0 = single heartbeat)
+        #[arg(short, long, default_value = "0")]
+        interval: u64,
     },
 
     /// Query and display node manager status as JSON
@@ -170,33 +174,62 @@ async fn handle_heartbeat(
     node_id: Option<String>,
     cluster_id: Option<String>,
     health: HealthStatus,
+    interval: u64,
 ) -> Result<(), String> {
     let node_id = node_id.unwrap_or_else(|| Uuid::new_v4().to_string());
     let cluster_id = cluster_id.unwrap_or_else(|| Uuid::new_v4().to_string());
-
-    info!(
-        "Sending heartbeat: node_id={}, cluster_id={}, health={:?}",
-        node_id, cluster_id, health
-    );
 
     let mut client = connect(server_addr).await?;
 
     let request = HeartbeatRequest {
         node_id: node_id.clone(),
-        cluster_id,
+        cluster_id: cluster_id.clone(),
         health_status: health as i32,
     };
 
-    let response = client
-        .heartbeat(request)
-        .await
-        .map_err(|e| format!("Heartbeat request failed: {}", e))?
-        .into_inner();
+    if interval == 0 {
+        // Single heartbeat
+        info!(
+            "Sending heartbeat: node_id={}, cluster_id={}, health={:?}",
+            node_id, cluster_id, health
+        );
 
-    // Print response as formatted JSON
-    let json_output = serde_json::to_string_pretty(&format_heartbeat_response(&response))
-        .map_err(|e| format!("Failed to serialize response to JSON: {}", e))?;
-    println!("{}", json_output);
+        let response = client
+            .heartbeat(request)
+            .await
+            .map_err(|e| format!("Heartbeat request failed: {}", e))?
+            .into_inner();
+
+        let json_output = serde_json::to_string_pretty(&format_heartbeat_response(&response))
+            .map_err(|e| format!("Failed to serialize response to JSON: {}", e))?;
+        println!("{}", json_output);
+    } else {
+        // Periodic heartbeats until Ctrl+C
+        info!(
+            "Sending heartbeats every {}s: node_id={}, cluster_id={}, health={:?}",
+            interval, node_id, cluster_id, health
+        );
+
+        let mut ticker = tokio::time::interval(std::time::Duration::from_secs(interval));
+
+        loop {
+            ticker.tick().await;
+
+            match client.heartbeat(request.clone()).await {
+                Ok(response) => {
+                    let response = response.into_inner();
+                    info!(
+                        "Heartbeat acknowledged - status: {}, roles: {}",
+                        node_status_name(response.node_status),
+                        response.assigned_roles.len()
+                    );
+                }
+                Err(e) => {
+                    error!("Heartbeat failed: {}", e);
+                }
+            }
+        }
+    }
 
     Ok(())
 }
@@ -327,7 +360,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             node_id,
             cluster_id,
             health,
-        } => handle_heartbeat(&cli.server, node_id, cluster_id, health).await,
+            interval,
+        } => handle_heartbeat(&cli.server, node_id, cluster_id, health, interval).await,
 
         Commands::Status { cluster_id } => handle_status(&cli.server, cluster_id).await,
 
