@@ -1,0 +1,30 @@
+[package]
+name = "node-manager-server"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+proto-gen = { workspace = true }
+node-manager-core = { workspace = true }
+tonic = { workspace = true }
+tonic-health = "0.14"
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = "0.9"
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+config = { workspace = true }
+chrono = { workspace = true }
+async-trait = { workspace = true }
+clap = { workspace = true }
+anyhow = "1"
+tempfile = "3"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "node-manager-server"
+path = "src/main.rs"

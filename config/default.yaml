@@ -1,0 +1,16 @@
+server:
+  bind_address: "[::1]:50051"
+
+heartbeat:
+  check_interval_secs: 15
+  missed_threshold: 3
+
+roles:
+  metadata_count: 1
+  storage_min_count: 1
+  storage_max_percent: 30
+  lease_duration_secs: 60
+
+storage:
+  backend: "json_file"
+  json_file_path: "data/state.json"

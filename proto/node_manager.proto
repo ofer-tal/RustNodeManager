@@ -1,0 +1,79 @@
+syntax = "proto3";
+package node_manager;
+
+// Node assignability status as determined by the node manager.
+enum NodeStatus {
+    NODE_STATUS_UNSPECIFIED = 0;
+    ASSIGNABLE = 1;
+    SUSPECT = 2;
+    UNASSIGNABLE = 3;
+}
+
+// Roles that can be assigned to data nodes.
+enum RoleType {
+    ROLE_TYPE_UNSPECIFIED = 0;
+    METADATA = 1;
+    DATA = 2;
+    STORAGE = 3;
+}
+
+// Self-reported health status from a data node.
+enum HealthStatus {
+    HEALTH_STATUS_UNSPECIFIED = 0;
+    HEALTHY = 1;
+    UNHEALTHY = 2;
+    DRAINING = 3;
+}
+
+// Heartbeat sent by a data node to the node manager.
+message HeartbeatRequest {
+    string node_id = 1;
+    string cluster_id = 2;
+    HealthStatus health_status = 3;
+}
+
+// A role lease with fencing token and expiration.
+message RoleLease {
+    RoleType role = 1;
+    uint64 fencing_token = 2;
+    uint64 lease_expires_at = 3; // unix epoch milliseconds
+}
+
+// Information about a peer node in the same cluster.
+message PeerNodeInfo {
+    string node_id = 1;
+    NodeStatus status = 2;
+    repeated RoleLease roles = 3;
+}
+
+// Response sent back to the data node after processing its heartbeat.
+message HeartbeatResponse {
+    NodeStatus node_status = 1;
+    repeated RoleLease assigned_roles = 2;
+    repeated PeerNodeInfo cluster_nodes = 3;
+}
+
+// Request to query the current status of clusters and nodes.
+message StatusRequest {
+    optional string cluster_id = 1; // filter by cluster; omit for all
+}
+
+// Status of a single cluster including its nodes.
+message ClusterStatus {
+    string cluster_id = 1;
+    repeated PeerNodeInfo nodes = 2;
+}
+
+// Response containing the status of all (or filtered) clusters.
+message StatusResponse {
+    repeated ClusterStatus clusters = 1;
+}
+
+// The Node Manager gRPC service.
+service NodeManagerService {
+    // Called by data nodes to report liveness and receive role assignments.
+    rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+    // Returns the current status of all clusters and nodes.
+    rpc GetStatus(StatusRequest) returns (StatusResponse);
+}

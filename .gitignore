@@ -1,0 +1,30 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+**/*.rs.bak
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment
+.env
+.env.*
+
+# Runtime data
+/data/
+*.json.tmp
+
+# Config overrides (keep default.yaml)
+config/local.yaml
+config/*.local.yaml
+
+# Downloaded tools
+*.zip

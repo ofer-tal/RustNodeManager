@@ -1,0 +1,17 @@
+[package]
+name = "proto-gen"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+prost = { workspace = true }
+tonic = { workspace = true }
+tonic-prost = { workspace = true }
+serde = { workspace = true }
+
+[build-dependencies]
+tonic-prost-build = { workspace = true }
+serde = { workspace = true }
+
+[lints]
+workspace = true
