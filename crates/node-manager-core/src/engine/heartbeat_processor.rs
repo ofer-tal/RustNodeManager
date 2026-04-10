@@ -135,17 +135,6 @@ impl HeartbeatProcessor {
         #[allow(clippy::unwrap_used)]
         let cluster = self.state.get_cluster(&cluster_id).unwrap();
 
-        // Collect cluster node info BEFORE mutations (to avoid borrow issues)
-        let cluster_nodes_snapshot: Vec<ClusterNodeInfo> = cluster
-            .sorted_nodes()
-            .iter()
-            .map(|n| ClusterNodeInfo {
-                node_id: n.node_id.clone(),
-                status: n.status,
-                roles: n.roles.clone(),
-            })
-            .collect();
-
         let role_changes = self.role_engine.compute_assignments(cluster);
 
         debug!(
@@ -173,7 +162,20 @@ impl HeartbeatProcessor {
             );
         }
 
-        // Step 5: Build the response
+        // Step 5: Collect cluster node info AFTER all mutations for accurate response
+        #[allow(clippy::unwrap_used)]
+        let cluster = self.state.get_cluster(&cluster_id).unwrap();
+        let cluster_nodes_snapshot: Vec<ClusterNodeInfo> = cluster
+            .sorted_nodes()
+            .iter()
+            .map(|n| ClusterNodeInfo {
+                node_id: n.node_id.clone(),
+                status: n.status,
+                roles: n.roles.clone(),
+            })
+            .collect();
+
+        // Step 6: Build the response
         // Safe to unwrap because process_heartbeat always creates/updates the node
         #[allow(clippy::unwrap_used)]
         let node = self.state.get_node(&node_id).unwrap();
