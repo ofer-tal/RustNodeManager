@@ -116,8 +116,9 @@ Write-Host "  1. Single node registration with full role assignment" -Foreground
 Write-Host "  2. Multi-node cluster with deterministic role distribution" -ForegroundColor Gray
 Write-Host "  3. Node failure detection and role reassignment" -ForegroundColor Gray
 Write-Host "  4. Node recovery and role restoration" -ForegroundColor Gray
-Write-Host "  5. Multi-cluster isolation" -ForegroundColor Gray
-Write-Host "  6. Unhealthy node immediately loses roles" -ForegroundColor Gray
+Write-Host "  5. Missed heartbeat → SUSPECT → UNASSIGNABLE with METADATA failover" -ForegroundColor Gray
+Write-Host "  6. Multi-cluster isolation" -ForegroundColor Gray
+Write-Host "  7. Unhealthy node immediately loses roles" -ForegroundColor Gray
 Write-Host ""
 Write-Host "Config: metadata_count=1, storage_max=50%, heartbeat_interval=3s, missed_threshold=2" -ForegroundColor DarkGray
 
@@ -217,9 +218,60 @@ Send-Heartbeat -NodeId "data-node-1" -ClusterId "prod-east" -Health "healthy"
 Get-Status -ClusterId "prod-east" -Label "Verify: node-1 recovered to ASSIGNABLE, metadata still on node-2"
 
 # ======================================================================
-# STEP 6: Multi-cluster isolation
+# STEP 6: Two nodes join fresh cluster for missed-heartbeat demo
 # ======================================================================
-Write-Step 6 "Multi-cluster isolation" @"
+Write-Step 6 "Two nodes join cluster 'failover-test' — one gets METADATA" @"
+  failover-alpha and failover-beta register in a fresh cluster.
+  failover-alpha (lowest ID) gets METADATA + DATA + STORAGE.
+  failover-beta gets DATA + STORAGE.
+"@
+
+Send-Heartbeat -NodeId "failover-alpha" -ClusterId "failover-test" -Health "healthy"
+Send-Heartbeat -NodeId "failover-beta" -ClusterId "failover-test" -Health "healthy"
+
+Get-Status -ClusterId "failover-test" -Label "Initial state: alpha has METADATA, both are ASSIGNABLE"
+
+# ======================================================================
+# STEP 7: Alpha stops heartbeating → SUSPECT
+# ======================================================================
+Write-Step 7 "Alpha stops heartbeating → becomes SUSPECT (keeps roles)" @"
+  failover-alpha stops sending heartbeats. failover-beta keeps heartbeating.
+  With check_interval=3s and missed_threshold=2:
+  After ~3s the monitor detects 1 missed interval → SUSPECT.
+  Suspect nodes KEEP their existing roles but receive no NEW assignments.
+"@
+
+Write-Host "`n  Waiting ~4 seconds for heartbeat monitor to detect missed heartbeat..." -ForegroundColor DarkGray
+Write-Host "  (beta keeps heartbeating during this time)" -ForegroundColor DarkGray
+Start-Sleep -Seconds 4
+
+# Refresh beta's heartbeat so it doesn't also become suspect
+Send-Heartbeat -NodeId "failover-beta" -ClusterId "failover-test" -Health "healthy"
+
+Get-Status -ClusterId "failover-test" -Label "Alpha is now SUSPECT (still holds METADATA), Beta is ASSIGNABLE"
+
+# ======================================================================
+# STEP 8: Alpha exceeds threshold → UNASSIGNABLE, METADATA failover
+# ======================================================================
+Write-Step 8 "Alpha exceeds threshold → UNASSIGNABLE, METADATA fails over" @"
+  After ~7s total since alpha's last heartbeat the monitor detects
+  2+ missed intervals (>= threshold of 2). Alpha becomes UNASSIGNABLE:
+  all roles revoked. METADATA is reassigned to failover-beta with a
+  new fencing token — automatic failover with zero manual intervention.
+"@
+
+Write-Host "`n  Waiting ~4 more seconds for alpha to exceed missed_heartbeat threshold..." -ForegroundColor DarkGray
+Start-Sleep -Seconds 4
+
+# Refresh beta and observe the new role assignment
+Send-Heartbeat -NodeId "failover-beta" -ClusterId "failover-test" -Health "healthy"
+
+Get-Status -ClusterId "failover-test" -Label "Alpha is UNASSIGNABLE (no roles), METADATA now on Beta with new fencing token"
+
+# ======================================================================
+# STEP 9: Multi-cluster isolation
+# ======================================================================
+Write-Step 9 "Multi-cluster isolation" @"
   Register nodes in a second cluster 'prod-west'.
   The two clusters are completely independent - nodes and roles
   in one cluster do not affect the other.
@@ -228,14 +280,14 @@ Write-Step 6 "Multi-cluster isolation" @"
 Send-Heartbeat -NodeId "west-node-1" -ClusterId "prod-west" -Health "healthy"
 Send-Heartbeat -NodeId "west-node-2" -ClusterId "prod-west" -Health "healthy"
 
-Get-Status -Label "All clusters: both prod-east (3 nodes) and prod-west (2 nodes)"
+Get-Status -Label "All clusters: prod-east (3 nodes), failover-test (2 nodes), prod-west (2 nodes)"
 
 Get-Status -ClusterId "prod-west" -Label "prod-west cluster only: independent role assignments"
 
 # ======================================================================
-# STEP 7: Draining node
+# STEP 10: Draining node
 # ======================================================================
-Write-Step 7 "Node enters DRAINING state" @"
+Write-Step 10 "Node enters DRAINING state" @"
   west-node-2 reports DRAINING status (graceful shutdown).
   Expected: Immediately becomes UNASSIGNABLE, all roles revoked.
   Useful for planned maintenance - the node signals it should
@@ -247,9 +299,9 @@ Send-Heartbeat -NodeId "west-node-2" -ClusterId "prod-west" -Health "draining"
 Get-Status -ClusterId "prod-west" -Label "Verify: west-node-2 is UNASSIGNABLE, all roles on west-node-1"
 
 # ======================================================================
-# STEP 8: Final status overview
+# STEP 11: Final status overview
 # ======================================================================
-Write-Step 8 "Final system overview" "Complete state of the Node Manager across all clusters."
+Write-Step 11 "Final system overview" "Complete state of the Node Manager across all clusters."
 
 Get-Status -Label "FINAL STATE: All clusters and nodes"
 
@@ -266,8 +318,10 @@ Write-Host "  [3] Fencing tokens on METADATA for split-brain prevention" -Foregr
 Write-Host "  [4] Immediate role revocation on UNHEALTHY status" -ForegroundColor White
 Write-Host "  [5] Automatic METADATA failover to next node" -ForegroundColor White
 Write-Host "  [6] Node recovery from UNASSIGNABLE to ASSIGNABLE" -ForegroundColor White
-Write-Host "  [7] Complete cluster isolation (prod-east vs prod-west)" -ForegroundColor White
-Write-Host "  [8] DRAINING status for graceful shutdown" -ForegroundColor White
+Write-Host "  [7] Missed heartbeat → SUSPECT transition (roles retained)" -ForegroundColor White
+Write-Host "  [8] Missed heartbeat → UNASSIGNABLE transition with automatic METADATA failover" -ForegroundColor White
+Write-Host "  [9] Complete cluster isolation (prod-east vs failover-test vs prod-west)" -ForegroundColor White
+Write-Host "  [10] DRAINING status for graceful shutdown" -ForegroundColor White
 Write-Host ""
 
 Cleanup
